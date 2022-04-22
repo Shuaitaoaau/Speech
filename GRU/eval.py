@@ -9,7 +9,7 @@ import pysepm
 import librosa.display
 import gc
 
-from train import Sp_En_Model
+from train import GRU_REG
 from numpy.linalg import norm
 from pystoi import stoi
 from pesq import pesq
@@ -26,7 +26,7 @@ def feature_STFT(data, para):
     del spec
     gc.collect()
 
-    return mag.T, phase.T
+    return mag, phase
 
 
 def feature_contex(noisy_frames, expand):
@@ -37,44 +37,34 @@ def feature_contex(noisy_frames, expand):
 
 
 
-def eval_file_IRM(wav_file,model,para):
+def eval_file_IRM(wav_file, model, para):
     
-    noisy_wav, fs = sf.read(wav_file,dtype = 'float32')
-    noisy_wav = noisy_wav.astype('float32')
+    noisy_data, fs = sf.read(wav_file,dtype = 'float32')
+    noisy_data = noisy_data.astype('float32')
 
-    noisy_mag, noisy_phase = feature_STFT(noisy_wav, 256)
-
-    noisy_LPS = torch.from_numpy(np.log(noisy_mag ** 2))
-
-    data_mean = torch.load(para.data_mean_path)
-    data_std = torch.load(para.data_std_path)
-
+    noisy_mag, noisy_phase = feature_STFT(noisy_data, para)
     
 
-    noisy_LPS_expand = feature_contex(noisy_LPS, para.n_expand)
-
-    noisy_LPS_expand = (noisy_LPS_expand - data_mean) / data_std
+    noisy_mag = torch.from_numpy(noisy_mag)
+    noisy_mag1 = noisy_mag.unsqueeze(-1)
+    noisy_mag1 = torch.transpose(noisy_mag1, 1, 0) #(seq_len, batch_size, input_size)
     
+
+
     model.eval()
     with torch.no_grad():
-        enh_mask = model(x = noisy_LPS_expand)
+        enh_mask = model(x = noisy_mag1)
 
     enh_mask = enh_mask.numpy()
+    noisy_mag = noisy_mag.numpy()
+    print(enh_mask)
+
+    enh_mag = noisy_mag * (1 - enh_mask)
+    
     
 
-    enh_phase = noisy_phase[para.n_expand : -para.n_expand, :]
-    enh_mag = (noisy_mag[para.n_expand : -para.n_expand, :] * enh_mask)
+    enh_spec = enh_mag * np.exp(1j * noisy_phase)
     
-    noisy_phase[para.n_expand : -para.n_expand, :] = enh_phase
-    noisy_mag[para.n_expand : -para.n_expand, :] = enh_mag
-
-    
-    print(noisy_phase.shape)
-    print(noisy_mag.shape)
-
-    enh_spec = noisy_mag.T * np.exp(1j * noisy_phase.T)
-
-
     # istft
     enh_wav = librosa.istft(enh_spec, hop_length = 128, win_length = 256)
     return enh_wav
@@ -123,7 +113,7 @@ if __name__ == "__main__":
     
     para = hyperparameter()
     
-    model_name = "/home/ts/SPEECH/IRM/model_save/model_19_0.0528.pth"
+    model_name = "/home/ts/SPEECH/GRU/model_save/model_49_0.0105.pth"
     m_model = torch.load(model_name,map_location = torch.device('cpu'))
     
 

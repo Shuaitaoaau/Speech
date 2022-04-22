@@ -1,17 +1,16 @@
 #!/usr/bin/env python
 # coding=utf-8
 
-
 import torch
-import os
-import librosa
-import soundfile as sf
-import numpy as np
 import torch.nn as nn
+import numpy as np
 import matplotlib.pyplot as plt
+import os
+
+from feature_extract import Frame_Data 
 from torch.utils.data import Dataset, DataLoader
 from hyperparameter import hyperparameter
-from feature_extract import Frame_Data
+
 
 
 class DNSDataset(Dataset):
@@ -21,11 +20,8 @@ class DNSDataset(Dataset):
         self.len = len(self.noisy_frame)
 
 
-
     def __getitem__(self, index):
         return self.noisy_frame[index, :], self.clean_frame[index, :]
-
-
 
 
     def __len__(self):
@@ -34,53 +30,57 @@ class DNSDataset(Dataset):
 
 
 
-class Sp_En_Model(torch.nn.Module):
+class GRU_REG(nn.Module):
     def __init__(self, para):
-        super(Sp_En_Model, self).__init__()
-        self.dim_in = para.dim_in
-        self.dim_out = para.dim_out
-        self.dim_embeding = para.dim_embeding
-        self.BNlayer = nn.BatchNorm1d(self.dim_out)
 
-        self.linear1 = torch.nn.Linear(self.dim_in, self.dim_embeding)
-        self.linear2 = torch.nn.Linear(self.dim_embeding, self.dim_embeding)
-        self.linear3 = torch.nn.Linear(self.dim_embeding, self.dim_embeding)
-        self.linear4 = torch.nn.Linear(self.dim_embeding, self.dim_out)
+        self.input_size = para.input_size
+        self.hidden_size = para.hidden_size
+        self.num_layers = para.num_layes
+        self.seq_len = para.seq_len
+        self.output_size = para.output_size
 
-        self.sigmoid = nn.Sigmoid()
+        
+        super(GRU_REG, self).__init__()
+        
+        
+        self.gru = nn.GRU(self.input_size, self.hidden_size, self.num_layers)
+        
+        for name, param in self.gru.named_parameters():
+            if name.startswith("weight"):
+                nn.init.xavier_normal_(param)
+            else:
+                nn.init.zeros_(param)
+        
+        self.reg = nn.Linear(self.seq_len, self.seq_len) # regression
 
+        
     def forward(self, x):
-        x = self.sigmoid(self.linear1(x))
-        #nn.Dropout(0.1)
-        x = self.sigmoid(self.linear2(x))
-        #nn.Dropout(0.1)
-        x = self.sigmoid(self.linear3(x))
-        #nn.Dropout(0.1)
-        x = self.sigmoid(self.linear4(x))
+        x, _ = self.gru(x) # (batch_size, seq_len, input_size)
+        x = torch.transpose(x, 1, 0)
+        b, s, h = x.shape
+        x = x.reshape(b, s * h)
+        x = self.reg(x)
         return x
 
 
 
+if __name__ == "__main__":
 
-
-if __name__ == '__main__':
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     para = hyperparameter()
+
     files = np.loadtxt(para.train_path, dtype = 'str')
     noisy_files = files[:, 0].tolist()
     clean_files = files[:, 1].tolist()
     noise_files = files[:, 2].tolist()
     
 
-    len1 = len(noisy_files)
-    
-
-
-    model = Sp_En_Model(para)
+    model = GRU_REG(para)
     model.train()
 
     criterion = torch.nn.MSELoss()
-    optimizer = torch.optim.Adam(params = model.parameters(), lr = 1e-4)
+    optimizer = torch.optim.Adam(params = model.parameters(), lr = para.lr)
 
     cnt = 0
     loss_sum = 0
@@ -95,19 +95,28 @@ if __name__ == '__main__':
 
     dataset = DNSDataset(noisy_frame, IRM_frame)
     train_loader = DataLoader(dataset = dataset,
-                            batch_size = 128,
+                            batch_size = 129,
                             shuffle = True,
                             num_workers = 4)
-    for epoch in range(20):
+
+    for epoch in range(10):
         print('epoch = %d'%epoch)
         for j, data in enumerate(train_loader, 0):
             inputs, labels = data
 
-            model.zero_grad()
+            #inputs: (batch_size, seq_len, input_size) => (seq_len, batch_size, input_size)
 
+            inputs = inputs.unsqueeze(-1)
+
+            inputs = torch.transpose(inputs, 1, 0) #(seq_len, batch_size, input_size)
+
+            
             y_pred = model(inputs)
 
+
             loss = criterion(y_pred, labels)
+
+            optimizer.zero_grad()
 
             loss_sum += loss.item()
 
@@ -138,34 +147,6 @@ if __name__ == '__main__':
     plt.ylabel('ERROR')
     plt.title('Adam')
     plt.show()
-
-                
-
-
-
-
-
-
-
-
-
-
-
-
-            
-
-
-
-
-            
-
-
-
-
-        
-
-
-        
 
 
 

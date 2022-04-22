@@ -16,12 +16,12 @@ class hyperparameter():
         self.dim_out = int(self.stft_nfft / 2 + 1)
 
 
-        self.train_path = '/home/ts/Speech/SPP/DNSdataset/train.csv'
-        self.save_path = '/home/ts/Speech/SPP/model_save'
+        self.train_path = '/home/ts/DNSdataset/train.csv'
+        self.save_path = '/home/ts/SPEECH/IRM/model_save'
 
 
         #For evaluate
-        self.data_mean_path = '/home/ts/Speech/SPP/data_mean.pt'
-        self.data_std_path = '/home/ts/Speech/SPP/data_std.pt'
-        self.test_file_path = '/home/ts/Speech/SPP/DNSdataset/test.csv'
-        self.enh_file_path = '/home/ts/Speech/SPP/Enhance'
+        self.data_mean_path = '/home/ts/SPEECH/IRM/data_mean.pt'
+        self.data_std_path = '/home/ts/SPEECH/IRM/data_std.pt'
+        self.test_file_path = '/home/ts/DNSdataset/test.csv'
+        self.enh_file_path = '/home/ts/SPEECH/IRM/Enhance'
